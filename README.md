@@ -48,12 +48,12 @@ pip install -e .
 
 ## Prepare data & Pretrained model
 
-**Dataset:  **
+#### Dataset:
 
 - **Synapse Multi-Organ Dataset**: Sign up in the [official Synapse website](https://www.synapse.org/#!Synapse:syn3193805/wiki/89480) and download the dataset or download the [preprocessed data](https://drive.google.com/file/d/1tGqMx-E4QZpSg2HQbVq5W3KSTHSG0hjK/view?usp=share_link) and save in the `dataset/synapse/` folder.
 - **ACDC Dataset**: Download the preprocessed ACDC dataset from [Google Drive of MT-UNet](https://drive.google.com/file/d/13qYHNIWTIBzwyFgScORL2RFd002vrPF2/view) and move into `dataset/ACDC/` folder.
 
-**ImageNet pretrained model: **
+#### ImageNet pretrained model:
 
 You should download the pretrained VMamba-Tiny V2 model (vssm_tiny_0230_ckpt_epoch_262) from [VMamba](https://github.com/MzeroMiko/VMamba/releases/download/%23v2cls/vssm_tiny_0230_ckpt_epoch_262.pth), and then put it in the `model/encoder/pretrain/` folder for initialization.
 
