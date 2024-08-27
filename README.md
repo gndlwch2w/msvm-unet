@@ -5,6 +5,9 @@
 
 <div><sup>1</sup>School of Information Science and Engineering, Yunnan University, Kunming, 650504, Yunnan, China</div>
 <div><sup>2</sup>Yunnan Key Laboratory of Intelligent Systems and Computing, Yunnan University, Kunming, 650504, Yunnan, China</div>
+
+Paper: ([arXiv 2408.13735](https://arxiv.org/abs/2408.13735))
+
 </div>
 
 ## Abstract
@@ -66,6 +69,17 @@ Using the following command to train & evaluate MSVM-UNet:
 python train_synapse.py
 # ACDC Dataset
 python train_acdc.py
+```
+
+## Citation
+
+```
+@article{chen2024msvmunet,
+  title={MSVM-UNet: Multi-Scale Vision Mamba UNet for Medical Image Segmentation}, 
+  author={Chaowei Chen and Li Yu and Shiquan Min and Shunfang Wang},
+  journal={arXiv preprint arXiv:2408.13735},
+  year={2024}
+}
 ```
 
 ## Acknowledgements
