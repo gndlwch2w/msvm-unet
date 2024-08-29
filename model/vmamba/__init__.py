@@ -8,7 +8,7 @@ from functools import partial
 from typing import Optional, Any
 from model.vmamba.vmamba import VSSM
 
-__all__ = ["VSSM", "build_model"]
+__all__ = ["VSSM", "ENCODERS", "build_model"]
 
 DEFAULT_CONFIG = {
     "PATCH_SIZE": 4,
