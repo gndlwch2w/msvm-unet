@@ -23,9 +23,9 @@ def calc_metric_per_case(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float
     if pred.sum() > 0 and gt.sum() > 0:
         dice = metric.binary.dc(pred, gt)
         hd95 = metric.binary.hd95(pred, gt)
-        # jaccard = metric.binary.jc(pred, gt)
-        # asd = np.mean([metric.binary.asd(pred, gt), metric.binary.asd(gt, pred)])
-        return dice, hd95, -1, -1
+        jaccard = metric.binary.jc(pred, gt)
+        asd = np.mean([metric.binary.asd(pred, gt), metric.binary.asd(gt, pred)])
+        return dice, hd95, jaccard, asd
     elif pred.sum() > 0 and gt.sum() == 0:
         return 1, 0, 1, 0
     else:
@@ -149,19 +149,19 @@ def inference(
                 f"mean_jacquard: {mean_jacquard}, "
                 f"mean_asd: {mean_asd}")
 
-def get_model(checkpoint_path: str, **kwargs: Any) -> nn.Module:
+def get_model(ckpt: str, **kwargs: Any) -> nn.Module:
     from model import build_model
 
     state_dict = OrderedDict()
-    for k, v in torch.load(checkpoint_path, map_location="cpu")["state_dict"].items():
+    for k, v in torch.load(ckpt, map_location="cpu")["state_dict"].items():
         state_dict[k.replace("_model.", "")] = v
 
     model = build_model(**kwargs)
     model.load_state_dict(state_dict)
-    logger.info(f"Loaded model checkpoint: {checkpoint_path}")
+    logger.info(f"Loaded model checkpoint: {ckpt}")
     return model
 
-def test_acdc(checkpoint_path: str) -> None:
+def test_acdc(ckpt: str) -> None:
     from dataset_acdc import ACDCDataset
     from torchvision.transforms import transforms
 
@@ -174,10 +174,7 @@ def test_acdc(checkpoint_path: str) -> None:
     logger.add(os.path.join(output_folder, "testing.log"))
 
     device = "cuda:0"
-    model = get_model(
-        checkpoint_path=checkpoint_path,
-        in_channels=3, num_classes=4, deep_supervision=False
-    ).to(device)
+    model = get_model(ckpt=ckpt, in_channels=3, num_classes=4).to(device)
     dataset = ACDCDataset(base_dir="dataset/acdc", split="test")
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     inference(
@@ -189,7 +186,7 @@ def test_acdc(checkpoint_path: str) -> None:
         norm_x_transform=norm_x_transform,
     )
 
-def test_synapse(checkpoint_path: str) -> None:
+def test_synapse(ckpt: str) -> None:
     from dataset_synapse import SynapseDataset
     from torchvision.transforms import transforms
 
@@ -202,11 +199,8 @@ def test_synapse(checkpoint_path: str) -> None:
     logger.add(os.path.join(output_folder, "testing.log"))
 
     device = "cuda:0"
-    model = get_model(
-        checkpoint_path=checkpoint_path,
-        in_channels=3, num_classes=9, deep_supervision=False
-    ).to(device)
-    dataset = SynapseDataset(base_dir="dataset/test_vol", split="test_vol")
+    model = get_model(ckpt=ckpt, in_channels=3, num_classes=9).to(device)
+    dataset = SynapseDataset(base_dir="dataset/synapse/test_vol", split="test_vol")
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     inference(
         model=model,
@@ -216,3 +210,7 @@ def test_synapse(checkpoint_path: str) -> None:
         device=device,
         norm_x_transform=norm_x_transform,
     )
+
+if __name__ == '__main__':
+    # test_synapse(ckpt="log/msvm-unet-synapse/checkpoints/epoch=259-val_mean_dice=0.8500.ckpt")
+    test_acdc(ckpt="log/msvm-unet-acdc/checkpoints/epoch.219-val_mean_dice.0.9258.ckpt")

@@ -10,13 +10,13 @@ from monai.metrics import CumulativeAverage
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from loguru import logger
-from typing import Callable, Optional
 from lr_scheduler import LR_SCHEDULERS
-from loss import LOSSES, DeepSupervisionWrapper
+from loss import LOSSES
 from eval import eval_single_volume
 from model import build_model
 from dataset_acdc import ACDCDataset
 from torchvision.transforms import transforms
+from typing import Callable
 
 torch.set_float32_matmul_precision("medium")
 device: str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -38,16 +38,11 @@ class ACDC(L.LightningModule):
         self.deep_supervision = False
 
         self._model = build_model(
+            in_channels=3,
             num_classes=self.num_classes,
-            deep_supervision=self.deep_supervision,
         ).to(device)
 
-        self.deep_supervision_scales: Optional[list[list[float, float]]] = None
-        if self.deep_supervision:
-            self.deep_supervision_scales = self._model.deep_supervision_scales
-
         self.build_loss()
-        self.tl_metric = CumulativeAverage()
         self.tl_metric = CumulativeAverage()
         self.vs_metric = defaultdict(lambda: defaultdict(list))
 
@@ -65,7 +60,6 @@ class ACDC(L.LightningModule):
             split="train",
             norm_x_transform=self.norm_x_transform,
             norm_y_transform=transforms.ToTensor(),
-            deep_supervision_scales=self.deep_supervision_scales if self.deep_supervision else None
         )
 
         self.val_dataset = ACDCDataset(
@@ -111,9 +105,6 @@ class ACDC(L.LightningModule):
         })
 
         self.loss = LOSSES[loss_0[0]](**loss_0[1])
-        if self.deep_supervision:
-            weights = [1.] * len(self.deep_supervision_scales)
-            self.loss = DeepSupervisionWrapper(self.loss, weights)
 
     @property
     def criterion(self) -> Callable[..., torch.Tensor]:
@@ -153,7 +144,7 @@ class ACDC(L.LightningModule):
 
     def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         image, label = batch["image"].to(device), batch["label"]
-        label = [e.to(device) for e in label] if self.deep_supervision else label.to(device)
+        label = label.to(device)
 
         pred = self.forward(image)
         loss = self.criterion(pred, label)
@@ -170,17 +161,15 @@ class ACDC(L.LightningModule):
         self.tl_metric.reset()
 
     def validation_step(self, batch: dict[str, torch.Tensor]) -> None:
-        volume, label, case_name = batch["image"], batch["label"], batch["case_name"][0]
+        volume, label = batch["image"], batch["label"]
         metric = eval_single_volume(
             model=self._model,
             volume=volume,
             label=label,
-            case_name=case_name,
             num_classes=self.num_classes,
             output=join(self.name, str(self.current_epoch)),
             patch_size=(224, 224),
             device=device,
-            deep_supervision=self.deep_supervision,
             norm_x_transform=getattr(self, "norm_x_transform", None),
         )
 
@@ -236,4 +225,4 @@ def train(name: str) -> None:
 if __name__ == "__main__":
     L.seed_everything(42)
     monai.utils.set_determinism(42)
-    train("/log/msvm-unet-acdc")
+    train("log/msvm-unet-acdc")

@@ -3,27 +3,26 @@ import torch
 from torch import Tensor
 from torch import nn
 from typing import Any
-from encoder import ENCODERS
-from decoder import Decoder
+from model.encoder import Encoder
+from model.decoder import Decoder
 
 class MSVMUNet(nn.Module):
     def __init__(
         self,
-        enc_name: str = "tiny_0230s",
         in_channels: int = 3,
         num_classes: int = 9,
-        deep_supervision: bool = False,
+        *,
+        enc_name: str = "tiny_0230s"  # tiny_0230s, small_0229s
     ) -> None:
         super(MSVMUNet, self).__init__()
-        self.encoder = ENCODERS[enc_name](in_channels=in_channels)
+        self.encoder = Encoder(enc_name, in_channels=in_channels)
         self.dims = self.encoder.dims
-        self.decoder = Decoder(dims=self.dims, num_classes=num_classes, deep_supervision=deep_supervision)
-        self.deep_supervision_scales = getattr(self.decoder, "decoder.deep_supervision_scales", None)
+        self.decoder = Decoder(dims=self.dims[::-1], num_classes=num_classes)
 
     def forward(self, x: Tensor) -> Tensor | tuple[Tensor]:
         if x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)
-        return self.decoder(self.encoder(x))
+        return self.decoder(self.encoder(x)[::-1])
 
     @torch.no_grad()
     def freeze_encoder(self) -> None:
@@ -31,8 +30,7 @@ class MSVMUNet(nn.Module):
 
     @torch.no_grad()
     def unfreeze_encoder(self) -> None:
-        for name, param in self.encoder.named_parameters():
-            param.requires_grad = True
+        self.encoder.unfreeze_params()
 
 def build_model(**kwargs: Any) -> MSVMUNet:
     return MSVMUNet(**kwargs)

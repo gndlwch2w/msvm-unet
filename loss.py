@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 from torch import nn
 from monai.losses.focal_loss import FocalLoss
-from typing import Callable, Sequence, Optional
+from typing import Optional
 
 def one_hot(input: Tensor, num_classes: int) -> Tensor:
     """
@@ -128,30 +128,6 @@ class DiceFocalLoss(nn.Module):
         """
         return (self.fl(input, target[:].long()) * self.fl_weight +
                 self.dc(input, target[:, 0, :, :]) * self.dc_weight)
-
-class DeepSupervisionWrapper(nn.Module):
-    def __init__(
-        self,
-        loss: Callable[..., Tensor],
-        weight_factors: Optional[Sequence[float]] = None
-    ) -> None:
-        super(DeepSupervisionWrapper, self).__init__()
-        assert any([x != 0 for x in weight_factors]), "At least one weight factor should be != 0.0"
-        self.weight_factors = tuple(weight_factors)
-        self.loss = loss
-
-    def forward(self, *args: Tensor) -> Tensor:
-        assert all([isinstance(i, (tuple, list)) for i in args]), \
-            f"all args must be either tuple or list, got {[type(i) for i in args]}"
-        assert len(args[0]) == len(args[1]), "all args must be same number of elements"
-
-        if self.weight_factors is None:
-            weights = (1,) * len(args[0])
-        else:
-            weights = self.weight_factors
-
-        # noinspection PyTypeChecker
-        return sum([weights[i] * self.loss(*inputs) for i, inputs in enumerate(zip(*args)) if weights[i] != 0.0])
 
 LOSSES = {
     "DiceCELoss": DiceCELoss,

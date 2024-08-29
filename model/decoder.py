@@ -1,11 +1,10 @@
 from __future__ import annotations
-from typing import Sequence, Type, Optional
 from collections import OrderedDict
 import torch
-from torch import Tensor
 import torch.nn as nn
 from einops import rearrange
-from model.encoder.vmamba import VSSBlock, LayerNorm2d, Linear2d
+from model.vmamba.vmamba import VSSBlock, LayerNorm2d, Linear2d
+from typing import Sequence, Type, Optional
 
 class MSConv(nn.Module):
     def __init__(self, dim: int, kernel_sizes: Sequence[int] = (1, 3, 5)) -> None:
@@ -15,12 +14,8 @@ class MSConv(nn.Module):
             for kernel_size in kernel_sizes
         ])
 
-    def forward(self, x: Tensor) -> Tensor:
-        outs = []
-        for conv in self.dw_convs:
-            outs.append(conv(x))
-        # noinspection PyTypeChecker
-        return x + sum(outs)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + sum([conv(x) for conv in self.dw_convs])
 
 class MS_MLP(nn.Module):
     def __init__(
@@ -44,7 +39,7 @@ class MS_MLP(nn.Module):
         self.fc2 = Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.fc1(x)
         x = self.act(x)
         x = self.drop(x)
@@ -115,7 +110,7 @@ class LKPE(nn.Module):
         )
         self.norm = norm_layer(dim // dim_scale)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.expand(x)
 
         x = rearrange(x, pattern="b c h w -> b h w c")
@@ -152,7 +147,7 @@ class FLKPE(nn.Module):
         self.norm = norm_layer(self.output_dim)
         self.out = nn.Conv2d(self.output_dim, num_classes, kernel_size=1)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.expand(x)
 
         x = rearrange(x, pattern="b c h w -> b h w c")
@@ -179,7 +174,7 @@ class UpBlock(nn.Module):
         self.concat_layer = Linear2d(2 * out_channels, out_channels)
         self.vss_layer = MSVSS(dim=out_channels, depth=depth, drop_path=drop_path)
 
-    def forward(self, input: Tensor, skip: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
         out = self.up(input)
         out = torch.cat(tensors=(out, skip), dim=1)
         out = self.concat_layer(out)
@@ -190,19 +185,12 @@ class Decoder(nn.Module):
     def __init__(
         self,
         dims: Sequence[int],
-        num_classes: int = 9,
-        deep_supervision: bool = False,
+        num_classes: int,
         depths: Sequence[int] = (2, 2, 2, 2),
         drop_path_rate: float = 0.2,
     ) -> None:
         super(Decoder, self).__init__()
-        self.dims = dims
-
-        self.deep_supervision = deep_supervision
-        assert not self.deep_supervision, "deep_supervision is not supported"
-
-        dims = dims[::-1]
-        dpr = [x.item() for x in torch.linspace(drop_path_rate, 0, (len(self.dims) - 1) * 2)]
+        dpr = [x.item() for x in torch.linspace(drop_path_rate, 0, (len(dims) - 1) * 2)]
 
         self.layers = nn.ModuleList()
         for i in range(1, len(dims)):
@@ -211,29 +199,14 @@ class Decoder(nn.Module):
                     in_channels=dims[i - 1],
                     out_channels=dims[i],
                     depth=depths[i],
-                    drop_path=dpr[sum(depths[: i - 1]):sum(depths[: i])],
+                    drop_path=dpr[sum(depths[: i - 1]): sum(depths[: i])],
                 ))
 
-        self.num_classes = num_classes
+        self.out_layers = nn.Sequential(FLKPE(dims[-1], num_classes))
 
-        self.out_layers = nn.ModuleList()
-        for i in range(len(self.deep_supervision_scales) if self.deep_supervision else 1):
-            self.out_layers.append(FLKPE(self.dims[i], self.num_classes))
-
-    def forward(self, features: Sequence[Tensor]) -> Tensor | tuple[torch]:
-        x = features[-1]
-        outs = [x]
-        features = features[:-1][::-1]
+    def forward(self, features: Sequence[torch.Tensor]) -> torch.Tensor:
+        out = features[0]
+        features = features[1:]
         for i, layer in enumerate(self.layers):
-            x = layer(x, features[i])
-            outs.append(x)
-
-        outs = outs[::-1]
-        if self.deep_supervision:
-            out = []
-            for i in range(len(outs)):
-                pred = self.out_layers[i](outs[i])
-                out.append(pred)
-        else:
-            out = self.out_layers[0](outs[0])
-        return out
+            out = layer(out, features[i])
+        return self.out_layers[0](out)

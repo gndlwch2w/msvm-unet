@@ -1,42 +1,28 @@
 import math
 from functools import partial
-from typing import Any, List, Type, Sequence, Optional
+from typing import Any, List, Type, Optional
 from collections import OrderedDict
-from loguru import logger
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
-from einops import repeat, rearrange
+from einops import repeat
 from timm.models.layers import DropPath, trunc_normal_
+
+from .csm_triton import CrossScanTriton, CrossMergeTriton, CrossScanTriton1b1, getCSM
+from .csm_triton import CrossScanTritonF, CrossMergeTritonF, CrossScanTriton1b1F
+from .csms6s import CrossScan, CrossMerge
+from .csms6s import CrossScan_Ab_1direction, CrossMerge_Ab_1direction, CrossScan_Ab_2direction, CrossMerge_Ab_2direction
+from .csms6s import SelectiveScanMamba, SelectiveScanCore, SelectiveScanOflex
 
 DropPath.__repr__ = lambda self: f"timm.DropPath({self.drop_prob})"
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
-try:
-    from modules.vmamba.v2.csm_triton import CrossScanTriton, CrossMergeTriton, CrossScanTriton1b1, getCSM
-    from modules.vmamba.v2.csm_triton import CrossScanTritonF, CrossMergeTritonF, CrossScanTriton1b1F
-    from modules.vmamba.v2.csms6s import CrossScan, CrossMerge
-    from modules.vmamba.v2.csms6s import CrossScan_Ab_1direction, CrossMerge_Ab_1direction, CrossScan_Ab_2direction, CrossMerge_Ab_2direction
-    from modules.vmamba.v2.csms6s import SelectiveScanMamba, SelectiveScanCore, SelectiveScanOflex
-    from modules.vmamba.v2.csms6s import flops_selective_scan_fn, flops_selective_scan_ref, selective_scan_flop_jit
-except ImportError:
-    from csm_triton import CrossScanTriton, CrossMergeTriton, CrossScanTriton1b1, getCSM
-    from csm_triton import CrossScanTritonF, CrossMergeTritonF, CrossScanTriton1b1F
-    from csms6s import CrossScan, CrossMerge
-    from csms6s import CrossScan_Ab_1direction, CrossMerge_Ab_1direction, CrossScan_Ab_2direction, CrossMerge_Ab_2direction
-    from csms6s import SelectiveScanMamba, SelectiveScanCore, SelectiveScanOflex
-    from csms6s import flops_selective_scan_fn, flops_selective_scan_ref, selective_scan_flop_jit
-
-# =====================================================
-# we have this class as linear and conv init differ from each other
-# this function enable loading from both conv2d or linear
 class Linear2d(nn.Linear):
     def forward(self, x: torch.Tensor):
-        # B, C, H, W = x.shape
         return F.conv2d(x, self.weight[:, :, None, None], self.bias)
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
@@ -158,7 +144,6 @@ class SoftmaxSpatial(nn.Softmax):
         else:
             raise NotImplementedError
 
-# =====================================================
 class mamba_init:
     @staticmethod
     def dt_init(dt_rank, d_inner, dt_scale=1.0, dt_init="random", dt_min=0.001, dt_max=0.1, dt_init_floor=1e-4):
@@ -184,7 +169,6 @@ class mamba_init:
             dt_proj.bias.copy_(inv_dt)
         # Our initialization would set all Linear.bias to zero, need to mark this one as _no_reinit
         # dt_proj.bias._no_reinit = True
-
         return dt_proj
 
     @staticmethod
@@ -1086,7 +1070,6 @@ class VSSBlock(nn.Module):
                 act_layer=mlp_act_layer,
                 drop=mlp_drop_rate,
                 channels_first=channel_first,
-                **kwargs,
             )
 
     def _forward(self, input: torch.Tensor):

@@ -1,11 +1,14 @@
 from __future__ import annotations
+import os
 import re
 import copy
 import torch
 from loguru import logger
 from functools import partial
 from typing import Optional, Any
-from model.encoder.vmamba import VSSM
+from model.vmamba.vmamba import VSSM
+
+__all__ = ["VSSM", "build_model"]
 
 DEFAULT_CONFIG = {
     "PATCH_SIZE": 4,
@@ -42,13 +45,13 @@ def get_config(config: dict[str, Any]) -> dict[str, Any]:
     target.update(config)
     return target
 
-def load_pretrained_ckpt(model: VSSM, ckpt_path: str) -> VSSM:
-    logger.info(f"Loading weights from: {ckpt_path}")
+def load_pretrained_ckpt(model: VSSM, ckpt: str) -> VSSM:
+    logger.info(f"Loading weights from: {ckpt}")
     skip_params = ["norm.weight", "norm.bias", "head.weight", "head.bias"]
 
     t_device = next(model.parameters()).device
     model = model.cpu()
-    ckpt = torch.load(ckpt_path, map_location="cpu")
+    ckpt = torch.load(ckpt, map_location="cpu")
     model_dict = model.state_dict()
     loaded_key_set = set()
     for kr, v in ckpt["model"].items():
@@ -74,7 +77,7 @@ def load_pretrained_ckpt(model: VSSM, ckpt_path: str) -> VSSM:
     model.load_state_dict(model_dict)
     return model.to(t_device)
 
-def build_model(config: dict[str, Any], pretrained_path: Optional[str] = None, **kwargs: Any) -> VSSM:
+def build_model(config: dict[str, Any], ckpt: Optional[str] = None, **kwargs: Any) -> VSSM:
     config = get_config(config)
     model = VSSM(
         patch_size=config["PATCH_SIZE"],
@@ -106,15 +109,15 @@ def build_model(config: dict[str, Any], pretrained_path: Optional[str] = None, *
         **kwargs
     )
 
-    if pretrained_path is not None:
-        model = load_pretrained_ckpt(model=model, ckpt_path=pretrained_path)
+    print(ckpt)
+    if ckpt and os.path.exists(ckpt):
+        model = load_pretrained_ckpt(model=model, ckpt=ckpt)
     return model
 
 def build_tiny_0230s(**kwargs: Any) -> VSSM:
-    patch_size = kwargs.pop("patch_size", 4)
     return build_model({
         "IN_CHANS": kwargs.pop("in_channels", 3),
-        "PATCH_SIZE": patch_size,
+        "PATCH_SIZE": kwargs.pop("patch_size", 4),
 
         "EMBED_DIM": 96,
         "DEPTHS": [2, 2, 8, 2],
@@ -154,7 +157,15 @@ def build_small_0229s(**kwargs: Any) -> VSSM:
         "DROP_PATH_RATE": 0.3,
     }, **kwargs)
 
+root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 ENCODERS = {
-    "tiny_0230s": partial(build_tiny_0230s, pretrained_path="./pretrain/vssm1_tiny_0230s_ckpt_epoch_264.pth"),
-    "small_0229s": partial(build_small_0229s, pretrained_path="./pretrain/vssm1_small_0229s_ckpt_epoch_240.pth"),
+    "tiny_0230s": partial(
+        build_tiny_0230s,
+        ckpt=os.path.join(root, "pretrain/vssm1_tiny_0230s_ckpt_epoch_264.pth"),
+    ),
+    "small_0229s": partial(
+        build_small_0229s,
+        ckpt=os.path.join(root, "pretrain/vssm1_small_0229s_ckpt_epoch_240.pth"),
+    ),
 }

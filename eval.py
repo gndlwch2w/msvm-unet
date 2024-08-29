@@ -48,11 +48,9 @@ def eval_single_volume(
     model: torch.nn.Module,
     volume: torch.Tensor,
     label: torch.Tensor,
-    case_name: str,
     num_classes: int,
     patch_size: tuple[int, int] = (224, 224),
     device: str | torch.device = None,
-    deep_supervision: bool = False,
     **kwargs: Any,
 ) -> dict:
     volume = volume.squeeze(0).cpu().detach().numpy()
@@ -75,7 +73,6 @@ def eval_single_volume(
 
         with torch.no_grad():
             out = model(input)
-            if deep_supervision: out = sum(out)
             out = torch.argmax(torch.softmax(out, dim=1), dim=1).squeeze(0)
             out = out.cpu().detach().numpy()
             if h != patch_size[0] or w != patch_size[1]:
