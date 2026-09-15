@@ -8,9 +8,9 @@ from .transform import TRANSFORMS
 DATALOADERS = {"default": DataLoader}
 
 SYNAPSE_CLSNAME2COLOR = {
-    "Aorta": (1, [30, 144, 255]),
+    "Aorta": (1, [255, 0, 0]),
     "GB": (2, [0, 255, 0]),
-    "KL": (3, [255, 0, 0]),
+    "KL": (3, [30, 144, 255]),
     "KR": (4, [0, 255, 255]),
     "Liver": (5, [255, 0, 255]),
     "PC": (6, [255, 255, 0]),
